@@ -1,9 +1,7 @@
 # %%
 import logging
-import os
 
 import numpy as np
-import pandas as pd
 
 # import seaborn as sns
 import torch
@@ -11,15 +9,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
-from sklearn.model_selection import train_test_split
-from torchinfo import summary
-from rdkit.Chem import AllChem
-from rdkit.Chem import Descriptors
-from rdkit import DataStructs
-from rdkit import Chem
-import IsoSpecPy as iso
-import matplotlib.pyplot as plt
-from functions import *
+from functions import get_fp, get_maccs, get_train_test_datasets
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -151,7 +141,7 @@ if __name__ == "__main__":
     lr = 1e-3
     batch_size = 512
 
-    name = f"Lite_1.24_TST_{seed}_{lr:.2e}_{batch_size}"
+    name = f"Lite_{seed}_{lr:.2e}_{batch_size}"
 
     device = torch.device("cuda")
     model = Lite().to(device)
@@ -165,7 +155,8 @@ if __name__ == "__main__":
     logging.info(f"Model: {model}")
     logging.info(f"Params: {optim}")
 
-    trn_ds, val_ds, tst_ds = get_train_test_datasets("../Data/In/mainlib.ms")
+    trn_ds, val_ds, tst_ds = get_train_test_datasets(
+        "../Data/In/mainlib.ms", Lite_Dataset)
     np.savetxt(f"../Data/Out/TST_{seed}_maccs.txt",
                tst_ds.maccs.numpy()[:, MACCS_MASK])
     np.savetxt(f"../Data/Out/TST_{seed}_fps.txt",

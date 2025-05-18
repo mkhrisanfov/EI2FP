@@ -1,9 +1,7 @@
 # %%
 import logging
-import os
 
 import numpy as np
-import pandas as pd
 
 # import seaborn as sns
 import torch
@@ -11,15 +9,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
-from sklearn.model_selection import train_test_split
-from torchinfo import summary
-from rdkit.Chem import AllChem
-from rdkit.Chem import Descriptors
-from rdkit import DataStructs
-from rdkit import Chem
-import IsoSpecPy as iso
-import matplotlib.pyplot as plt
-from functions import *
+from functions import get_fp, get_maccs, get_train_test_datasets
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -43,7 +33,7 @@ MACCS_MASK = [42,  57,  62,  65,  66,  72,  74,  75,  77,  78,  79,  80,  81,
 # %%
 
 
-class EI_MIX(nn.Module):
+class Full(nn.Module):
 
     def __init__(self):
         super().__init__()
@@ -78,7 +68,7 @@ class EI_MIX(nn.Module):
         return (maccs, fps)
 
 
-class EI_MIX_Dataset(Dataset):
+class Full_Dataset(Dataset):
 
     def __init__(self, smis, spectra):
         spectra = np.vstack(spectra) / 1000
@@ -152,10 +142,10 @@ if __name__ == "__main__":
     lr = 1e-3
     batch_size = 512
 
-    name = f"Full_4L3_BN_TST_{lr:.2e}_{batch_size}"
+    name = f"Full_{lr:.2e}_{batch_size}"
 
     device = torch.device("cuda")
-    model = EI_MIX().to(device)
+    model = Full().to(device)
 
     optim = torch.optim.AdamW(model.parameters(), lr=lr)
     crit = nn.BCELoss()
@@ -166,7 +156,10 @@ if __name__ == "__main__":
     logging.info(f"Model: {model}")
     logging.info(f"Params: {optim}")
 
-    trn_ds, val_ds, tst_ds = get_train_test_datasets("../Data/In/mainlib.ms")
+    # The function get_train_test_dataset should be implemented by the user based on their dataset
+    # The example uses a homemade mainlib database
+    trn_ds, val_ds, tst_ds = get_train_test_datasets(
+        "../Data/In/mainlib.ms", Full_Dataset)
     trn_dl = DataLoader(
         trn_ds,
         batch_size,

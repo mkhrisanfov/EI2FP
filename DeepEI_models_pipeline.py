@@ -1,9 +1,4 @@
-# %%
-import logging
-import os
-
 import numpy as np
-import pandas as pd
 
 # import seaborn as sns
 import torch
@@ -11,15 +6,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
-from sklearn.model_selection import train_test_split
-from torchinfo import summary
-from rdkit.Chem import AllChem
-from rdkit.Chem import Descriptors
-from rdkit import DataStructs
-from rdkit import Chem
-import IsoSpecPy as iso
-import matplotlib.pyplot as plt
-from functions import *
+from functions import get_maccs, get_fp, get_train_test_datasets
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -67,7 +54,7 @@ class DEEPEI(nn.Module):
         return self.fc_last(x).squeeze()
 
 
-class EI_MIX_Dataset(Dataset):
+class DeepEI_Dataset(Dataset):
 
     def __init__(self, smis, spectra):
         spectra = np.vstack(spectra) / 1000
@@ -121,7 +108,8 @@ if __name__ == "__main__":
     lr = 1e-3
     batch_size = 32
 
-    trn_ds, val_ds, tst_ds = get_train_test_datasets("../Data/In/mainlib.ms")
+    trn_ds, val_ds, tst_ds = get_train_test_datasets(
+        "../Data/In/mainlib.ms", DeepEI_Dataset)
     trn_dl = DataLoader(
         trn_ds,
         batch_size,
