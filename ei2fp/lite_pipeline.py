@@ -12,6 +12,8 @@ from tqdm.contrib.concurrent import process_map
 from functions import get_fp, get_maccs, get_train_test_datasets
 
 from torch.utils.tensorboard import SummaryWriter
+from pathlib import Path
+BASE_DIR = Path(__file__).resolve(strict=True).parent.parent
 
 # %load_ext tensorboard
 torch.backends.cudnn.benchmark = True
@@ -30,34 +32,30 @@ MACCS_MASK = [42,  57,  62,  65,  66,  72,  74,  75,  77,  78,  79,  80,  81,
               136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148,
               149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161,
               162, 163, 164, 165]
-# %%
 
 
-class Full(nn.Module):
+class Lite(nn.Module):
 
     def __init__(self):
         super().__init__()
 
         self.fc_first = nn.Sequential(
-            nn.Linear(750, 4096),
+            nn.Linear(750, 2048),
             nn.SiLU(),
-            nn.Linear(4096, 4096),
-            nn.SiLU(),
-            nn.Dropout(0.5),
-            nn.Linear(4096, 2048),
+            nn.Linear(2048, 1024),
             nn.SiLU(),
             nn.Dropout(0.5),
-            nn.Linear(2048, 2048),
+            nn.Linear(1024, 1024),
             nn.SiLU(),
-            nn.BatchNorm1d(2048),
+            nn.BatchNorm1d(1024),
         )
 
         self.fc_maccs = nn.Sequential(
-            nn.Linear(2048, 167),
+            nn.Linear(1024, 167),
             nn.Sigmoid(),
         )
         self.fc_fps = nn.Sequential(
-            nn.Linear(2048, 1024),
+            nn.Linear(1024, 1024),
             nn.Sigmoid(),
         )
 
@@ -68,7 +66,7 @@ class Full(nn.Module):
         return (maccs, fps)
 
 
-class Full_Dataset(Dataset):
+class Lite_Dataset(Dataset):
 
     def __init__(self, smis, spectra):
         spectra = np.vstack(spectra) / 1000
@@ -86,6 +84,7 @@ class Full_Dataset(Dataset):
 
     def __len__(self):
         return len(self.spectra)
+
 # %%
 
 
@@ -94,7 +93,7 @@ def train(device, model, optim, crit, epoch_end, train_dl, val_dl, name):
     b_trn = 10
     b_tst = 10
     # print("Start")
-    writer = SummaryWriter(log_dir=f"../Logs/{name}", flush_secs=15)
+    writer = SummaryWriter(log_dir=BASE_DIR/f"logs/{name}", flush_secs=15)
     for epoch in tqdm(range(epoch_end)):
         model.train()
         train_loss = []
@@ -129,37 +128,42 @@ def train(device, model, optim, crit, epoch_end, train_dl, val_dl, name):
         )
         writer.add_scalar("loss/trn", train_loss, epoch)
         writer.add_scalar("loss/tst", val_loss, epoch)
+        # writer.add_scalar("loss/val",val_loss,epoch)
         if val_loss <= b_tst:
-            torch.save(model.state_dict(), f"../Models/{name}_model.pth")
+            torch.save(model.state_dict(), BASE_DIR/f"models/{name}_model.pth")
 
-    torch.save(model.state_dict(), f"../Models/{name}_model_final.pth")
+    torch.save(model.state_dict(), BASE_DIR/f"models/{name}_model_final.pth")
     return b_trn, b_tst
 
 
 # %%
 if __name__ == "__main__":
+    seed = 47
 
     lr = 1e-3
     batch_size = 512
 
-    name = f"Full_{lr:.2e}_{batch_size}"
+    name = f"Lite_{seed}_{lr:.2e}_{batch_size}"
 
-    device = torch.device("cuda")
-    model = Full().to(device)
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    model = Lite().to(device)
 
     optim = torch.optim.AdamW(model.parameters(), lr=lr)
     crit = nn.BCELoss()
 
-    logging.basicConfig(
-        filename=f"../Logs/{name}.log", encoding="utf-8", level=logging.DEBUG
-    )
-    logging.info(f"Model: {model}")
-    logging.info(f"Params: {optim}")
-
-    # The function get_train_test_dataset should be implemented by the user based on their dataset
-    # The example uses a homemade mainlib database
     trn_ds, val_ds, tst_ds = get_train_test_datasets(
-        "../Data/In/mainlib.ms", Full_Dataset)
+        BASE_DIR/"data/input/input_lib.ms", Lite_Dataset)
+    np.savetxt(BASE_DIR/f"data/output/TST_{seed}_maccs.txt",
+               tst_ds.maccs.numpy()[:, MACCS_MASK])
+    np.savetxt(BASE_DIR/f"data/output/TST_{seed}_fps.txt",
+               tst_ds.fps.numpy()[:, FPS_MASK])
+    np.savetxt(BASE_DIR/f"data/output/VAL_{seed}_maccs.txt",
+               val_ds.maccs.numpy()[:, MACCS_MASK])
+    np.savetxt(BASE_DIR/f"data/output/VAL_{seed}_fps.txt",
+               val_ds.fps.numpy()[:, FPS_MASK])
     trn_dl = DataLoader(
         trn_ds,
         batch_size,
@@ -171,7 +175,8 @@ if __name__ == "__main__":
     val_dl = DataLoader(
         val_ds, batch_size, pin_memory=True, num_workers=4, persistent_workers=True
     )
+    print("Starte training")
 
-    # %%
     b_train, b_test = train(device, model, optim, crit,
                             100, trn_dl, val_dl, name)
+    print("Finished training")

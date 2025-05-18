@@ -26,16 +26,16 @@ def get_maccs(smiles):
     return maccs_arr
 
 
-def get_train_test_datasets(file_name, dataset, seed=42):
+def get_train_test_datasets(file_name, dataset, seed=42, spectra_len=750):
     # compounds = []
     names = []
     smis = []
     spectra = []
-    with open(file_name, "r") as f:  # "../Data/mainlib.ms"
+    with open(file_name, "r") as f:  # "../data/input/input_lib.ms"
         for line in tqdm(f, total=261219):
             name, smiles, spectrum, _ = line.split("|")
             spectrum = list(map(float, spectrum.split()))
-            dense_spectrum = np.zeros(750)
+            dense_spectrum = np.zeros(spectra_len)
             spectrum = np.array(spectrum).reshape(-1, 2)
             dense_spectrum[spectrum[:, 0].astype(int)] = spectrum[:, 1]
             names.append(name.strip())
