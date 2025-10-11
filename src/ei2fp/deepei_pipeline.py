@@ -1,20 +1,14 @@
 import numpy as np
-
-# import seaborn as sns
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
-from functions import get_maccs, get_fp, get_train_test_datasets
 
-from torch.utils.tensorboard import SummaryWriter
-from pathlib import Path
-BASE_DIR = Path(__file__).resolve(strict=True).parent.parent
+from ei2fp.functions import get_fp, get_maccs, get_train_test_datasets
+from ei2fp import BASE_DIR
 
-# %load_ext tensorboard
-torch.backends.cudnn.benchmark = True
-# %%
+# fmt: off
 FPS_MASK = [1,    4,   13,   15,   33,   36,   64,   80,  114,  119,  128,
             147,  175,  225,  250,  283,  293,  294,  301,  314,  322,  356,
             361,  362,  378,  389,  420,  512,  540,  561,  579,  591,  636,
@@ -29,7 +23,7 @@ MACCS_MASK = [42,  57,  62,  65,  66,  72,  74,  75,  77,  78,  79,  80,  81,
               136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148,
               149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161,
               162, 163, 164, 165]
-# %%
+# fmt: on
 
 
 class DEEPEI(nn.Module):
@@ -62,12 +56,15 @@ class DeepEI_Dataset(Dataset):
         spectra = np.vstack(spectra) / 1000
         self.spectra = torch.FloatTensor(spectra)
         self.maccs = torch.FloatTensor(
-            np.vstack(process_map(get_maccs, smis,
-                      max_workers=4, chunksize=1000))
+            np.vstack(process_map(get_maccs, smis, max_workers=4, chunksize=1000))
         )
-        self.fps = torch.clip(torch.FloatTensor(
-            np.vstack(process_map(get_fp, smis, max_workers=4, chunksize=1000))
-        ), 0, 1)
+        self.fps = torch.clip(
+            torch.FloatTensor(
+                np.vstack(process_map(get_fp, smis, max_workers=4, chunksize=1000))
+            ),
+            0,
+            1,
+        )
 
     def __getitem__(self, index):
         return (self.maccs[index], self.fps[index], self.spectra[index])
@@ -75,10 +72,20 @@ class DeepEI_Dataset(Dataset):
     def __len__(self):
         return len(self.spectra)
 
-# %%
 
-
-def train(device, model, optim, crit, epoch_end, train_dl, val_dl, test_dl, name, fps_num=None, maccs_num=None):
+def train(
+    device,
+    model,
+    optim,
+    crit,
+    epoch_end,
+    train_dl,
+    val_dl,
+    test_dl,
+    name,
+    fps_num=None,
+    maccs_num=None,
+):
     torch.cuda.empty_cache()
     for epoch in range(epoch_end):
         model.train()
@@ -86,14 +93,14 @@ def train(device, model, optim, crit, epoch_end, train_dl, val_dl, test_dl, name
             optim.zero_grad()
             pred = model(spectra.to(device, non_blocking=True))
             if fps_num:
-                loss = crit(pred, fps[:, fps_num].to(
-                    device, non_blocking=True)).mean()
+                loss = crit(pred, fps[:, fps_num].to(device, non_blocking=True)).mean()
             elif maccs_num:
-                loss = crit(pred, maccs[:, maccs_num].to(
-                    device, non_blocking=True)).mean()
+                loss = crit(
+                    pred, maccs[:, maccs_num].to(device, non_blocking=True)
+                ).mean()
             loss.backward()
             optim.step()
-    torch.save(model.state_dict(), BASE_DIR/f"models/deepei/{name}_.pth")
+    torch.save(model.state_dict(), BASE_DIR / f"models/deepei/{name}_.pth")
 
     model.eval()
     with torch.no_grad():
@@ -104,14 +111,14 @@ def train(device, model, optim, crit, epoch_end, train_dl, val_dl, test_dl, name
     return all_preds
 
 
-# %%
 if __name__ == "__main__":
 
     lr = 1e-3
     batch_size = 32
 
     trn_ds, val_ds, tst_ds = get_train_test_datasets(
-        BASE_DIR/"data/input/input_lib.ms", DeepEI_Dataset, spectra_len=2000)
+        BASE_DIR / "data/input/input_lib.ms", DeepEI_Dataset, spectra_len=2000
+    )
     trn_dl = DataLoader(
         trn_ds,
         batch_size,
@@ -137,20 +144,44 @@ if __name__ == "__main__":
         model = DEEPEI().to(device)
         optim = torch.optim.AdamW(model.parameters(), lr=lr)
         name = f"DEEPEI_FP_{fp_num}"
-        fps_preds.append(train(device, model, optim, crit, 8,
-                         trn_dl, val_dl, tst_dl, name, fps_num=fp_num))
+        fps_preds.append(
+            train(
+                device,
+                model,
+                optim,
+                crit,
+                8,
+                trn_dl,
+                val_dl,
+                tst_dl,
+                name,
+                fps_num=fp_num,
+            )
+        )
         break
     fps_preds = np.hstack(fps_preds)
-    np.savetxt(BASE_DIR/"data/output/TST_DEEPEI_fp_preds.txt", fps_preds)
+    np.savetxt(BASE_DIR / "data/output/TST_DEEPEI_fp_preds.txt", fps_preds)
 
     maccs_preds = []
     for maccs_num in tqdm(MACCS_MASK):
         model = DEEPEI().to(device)
         optim = torch.optim.AdamW(model.parameters(), lr=lr)
         name = f"DEEPEI_MACCS_{maccs_num}"
-        maccs_preds.append(train(device, model, optim, crit, 8,
-                           trn_dl, val_dl, tst_dl, name, maccs_num=maccs_num))
+        maccs_preds.append(
+            train(
+                device,
+                model,
+                optim,
+                crit,
+                8,
+                trn_dl,
+                val_dl,
+                tst_dl,
+                name,
+                maccs_num=maccs_num,
+            )
+        )
         break
     maccs_preds = np.hstack(maccs_preds)
-    np.savetxt(BASE_DIR/"data/output/TST_DEEPEI_maccs_preds.txt", maccs_preds)
+    np.savetxt(BASE_DIR / "data/output/TST_DEEPEI_maccs_preds.txt", maccs_preds)
     print("Finished")

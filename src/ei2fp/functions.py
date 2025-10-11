@@ -1,5 +1,6 @@
 import numpy as np
-from rdkit.Chem import AllChem, MACCSkeys
+from rdkit.Chem import rdMolDescriptors
+from rdkit.Chem import rdFingerprintGenerator
 from rdkit import DataStructs
 from rdkit import Chem
 from tqdm.auto import tqdm
@@ -10,17 +11,16 @@ def get_fp(smiles, radius: int = 2):
     mol = Chem.MolFromSmiles(smiles)
     if not mol:
         return None
-    fp = AllChem.GetHashedMorganFingerprint(mol, radius=radius, nBits=1024)
-    fp_arr = np.zeros(1)
-    DataStructs.ConvertToNumpyArray(fp, fp_arr)
-    return fp_arr
+    generator = rdFingerprintGenerator.GetMorganGenerator(radius=radius, fpSize=1024)
+    fp = generator.GetFingerprintAsNumPy(mol)
+    return fp
 
 
 def get_maccs(smiles):
     mol = Chem.MolFromSmiles(smiles)
     if not mol:
         return None
-    maccs = MACCSkeys.GenMACCSKeys(mol)
+    maccs = rdMolDescriptors.GetMACCSKeysFingerprint(mol)
     maccs_arr = np.zeros(1)
     DataStructs.ConvertToNumpyArray(maccs, maccs_arr)
     return maccs_arr
@@ -45,9 +45,11 @@ def get_train_test_datasets(file_name, dataset, seed=42, spectra_len=750):
     smis = np.array(smis)
     spectra = np.vstack(spectra)
     unique_smis, unique_index, unique_inverse = np.unique(
-        smis, return_index=True, return_inverse=True)
+        smis, return_index=True, return_inverse=True
+    )
     trn_val, tst = train_test_split(
-        np.arange(len(unique_smis)), test_size=0.1, random_state=seed)
+        np.arange(len(unique_smis)), test_size=0.1, random_state=seed
+    )
     trn, val = train_test_split(trn_val, test_size=0.15, random_state=seed)
     unique_trn_smis = set(unique_smis[trn])
     unique_val_smis = set(unique_smis[val])

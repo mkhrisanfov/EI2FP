@@ -1,23 +1,17 @@
-# %%
 import logging
 
 import numpy as np
-
-# import seaborn as sns
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
-from functions import get_fp, get_maccs, get_train_test_datasets
 
-from torch.utils.tensorboard import SummaryWriter
-from pathlib import Path
-BASE_DIR = Path(__file__).resolve(strict=True).parent.parent
+from ei2fp import BASE_DIR
+from ei2fp.functions import get_fp, get_maccs, get_train_test_datasets
 
-# %load_ext tensorboard
-torch.backends.cudnn.benchmark = True
-# %%
+# fmt: off
 FPS_MASK = [1,    4,   13,   15,   33,   36,   64,   80,  114,  119,  128,
             147,  175,  225,  250,  283,  293,  294,  301,  314,  322,  356,
             361,  362,  378,  389,  420,  512,  540,  561,  579,  591,  636,
@@ -32,6 +26,7 @@ MACCS_MASK = [42,  57,  62,  65,  66,  72,  74,  75,  77,  78,  79,  80,  81,
               136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148,
               149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161,
               162, 163, 164, 165]
+# fmt: on
 
 
 class Lite(nn.Module):
@@ -72,12 +67,15 @@ class Lite_Dataset(Dataset):
         spectra = np.vstack(spectra) / 1000
         self.spectra = torch.FloatTensor(spectra)
         self.maccs = torch.FloatTensor(
-            np.vstack(process_map(get_maccs, smis,
-                      max_workers=4, chunksize=1000))
+            np.vstack(process_map(get_maccs, smis, max_workers=4, chunksize=1000))
         )
-        self.fps = torch.clip(torch.FloatTensor(
-            np.vstack(process_map(get_fp, smis, max_workers=4, chunksize=1000))
-        ), 0, 1)
+        self.fps = torch.clip(
+            torch.FloatTensor(
+                np.vstack(process_map(get_fp, smis, max_workers=4, chunksize=1000))
+            ),
+            0,
+            1,
+        )
 
     def __getitem__(self, index):
         return (self.maccs[index], self.fps[index], self.spectra[index])
@@ -85,25 +83,22 @@ class Lite_Dataset(Dataset):
     def __len__(self):
         return len(self.spectra)
 
-# %%
-
 
 def train(device, model, optim, crit, epoch_end, train_dl, val_dl, name):
     torch.cuda.empty_cache()
     b_trn = 10
     b_tst = 10
     # print("Start")
-    writer = SummaryWriter(log_dir=BASE_DIR/f"logs/{name}", flush_secs=15)
+    writer = SummaryWriter(log_dir=BASE_DIR / f"logs/{name}", flush_secs=15)
     for epoch in tqdm(range(epoch_end)):
         model.train()
         train_loss = []
         for maccs, fps, spectra in train_dl:
             optim.zero_grad()
             pred_maccs, pred_fps = model(spectra.to(device, non_blocking=True))
-            loss1 = crit(pred_maccs, maccs.to(
-                device, non_blocking=True)).mean()
+            loss1 = crit(pred_maccs, maccs.to(device, non_blocking=True)).mean()
             loss2 = crit(pred_fps, fps.to(device, non_blocking=True)).mean()
-            loss = (167*loss1+1024*loss2)/(167+1024)
+            loss = (167 * loss1 + 1024 * loss2) / (167 + 1024)
             loss.backward()
             optim.step()
             train_loss.append(loss.detach())
@@ -114,11 +109,10 @@ def train(device, model, optim, crit, epoch_end, train_dl, val_dl, name):
         val_loss = []
         with torch.no_grad():
             for maccs, fps, spectra in val_dl:
-                pred_maccs, pred_fps = model(
-                    spectra.to(device, non_blocking=True))
+                pred_maccs, pred_fps = model(spectra.to(device, non_blocking=True))
                 loss1 = crit(pred_maccs, maccs.to(device, non_blocking=True))
                 loss2 = crit(pred_fps, fps.to(device, non_blocking=True))
-                loss = (167*loss1+1024*loss2)/(167+1024)
+                loss = (167 * loss1 + 1024 * loss2) / (167 + 1024)
                 val_loss.append(loss.detach().mean())
         val_loss = torch.stack([x.cpu() for x in val_loss]).mean()
         b_tst = min(b_tst, val_loss)
@@ -130,13 +124,12 @@ def train(device, model, optim, crit, epoch_end, train_dl, val_dl, name):
         writer.add_scalar("loss/tst", val_loss, epoch)
         # writer.add_scalar("loss/val",val_loss,epoch)
         if val_loss <= b_tst:
-            torch.save(model.state_dict(), BASE_DIR/f"models/{name}_model.pth")
+            torch.save(model.state_dict(), BASE_DIR / f"models/{name}_model.pth")
 
-    torch.save(model.state_dict(), BASE_DIR/f"models/{name}_model_final.pth")
+    torch.save(model.state_dict(), BASE_DIR / f"models/{name}_model_final.pth")
     return b_trn, b_tst
 
 
-# %%
 if __name__ == "__main__":
     seed = 47
 
@@ -155,15 +148,22 @@ if __name__ == "__main__":
     crit = nn.BCELoss()
 
     trn_ds, val_ds, tst_ds = get_train_test_datasets(
-        BASE_DIR/"data/input/input_lib.ms", Lite_Dataset)
-    np.savetxt(BASE_DIR/f"data/output/TST_{seed}_maccs.txt",
-               tst_ds.maccs.numpy()[:, MACCS_MASK])
-    np.savetxt(BASE_DIR/f"data/output/TST_{seed}_fps.txt",
-               tst_ds.fps.numpy()[:, FPS_MASK])
-    np.savetxt(BASE_DIR/f"data/output/VAL_{seed}_maccs.txt",
-               val_ds.maccs.numpy()[:, MACCS_MASK])
-    np.savetxt(BASE_DIR/f"data/output/VAL_{seed}_fps.txt",
-               val_ds.fps.numpy()[:, FPS_MASK])
+        BASE_DIR / "data/input/input_lib.ms", Lite_Dataset
+    )
+    np.savetxt(
+        BASE_DIR / f"data/output/TST_{seed}_maccs.txt",
+        tst_ds.maccs.numpy()[:, MACCS_MASK],
+    )
+    np.savetxt(
+        BASE_DIR / f"data/output/TST_{seed}_fps.txt", tst_ds.fps.numpy()[:, FPS_MASK]
+    )
+    np.savetxt(
+        BASE_DIR / f"data/output/VAL_{seed}_maccs.txt",
+        val_ds.maccs.numpy()[:, MACCS_MASK],
+    )
+    np.savetxt(
+        BASE_DIR / f"data/output/VAL_{seed}_fps.txt", val_ds.fps.numpy()[:, FPS_MASK]
+    )
     trn_dl = DataLoader(
         trn_ds,
         batch_size,
@@ -177,6 +177,5 @@ if __name__ == "__main__":
     )
     print("Starte training")
 
-    b_train, b_test = train(device, model, optim, crit,
-                            100, trn_dl, val_dl, name)
+    b_train, b_test = train(device, model, optim, crit, 100, trn_dl, val_dl, name)
     print("Finished training")
