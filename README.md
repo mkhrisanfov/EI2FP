@@ -77,7 +77,7 @@ Run the inference script with .MSP input file containing compounds with ids in t
 ei2fp-predict input_file.msp output_file.msp ./models/EI2FPFull.pth
 ```
 
-The output will be an .MSP file with original identifiers, as well as **MACCS** keys (field `maccs:`) and **ECFP6** fingerprints (field `ecfp4:`) inside the "[]" brackets separated by semicolons, predicted from electron ionization mass spectra.
+The output will be an .MSP file with original identifiers, as well as **MACCS** keys (field `maccs:`) and **ECFP6** fingerprints (field `ecfp6:`) inside the "[]" brackets separated by semicolons, predicted from electron ionization mass spectra.
 
 Any other id field name can be specified insted of `name:`.
 There are two optional arguments that can be used: batch size and `--use_cuda` flag. Full syntax:
@@ -98,7 +98,7 @@ The weights for each run will be placed into `models/` folder. Logs, including T
 
 ### Troubleshooting
 
-**If the commands above are not working** (virtual environment is not active or package was installed improperly). Replace the shortcut commands with the full ones, starting from `neims-pytorch/` folder.
+**If the commands above are not working** (virtual environment is not active or package was installed improperly). Replace the shortcut commands with the full ones, starting from `EI2FP/` folder.
 
 For Linux:
 

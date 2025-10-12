@@ -89,7 +89,7 @@ def main(
         for i, name in enumerate(tqdm(names)):
             fout.write(f"name: {name.rstrip('\n')}\n")
             fout.write(f"maccs: [{';'.join(map(str, pred_maccs[i]))}]\n")
-            fout.write(f"ecfp4: [{';'.join(map(str, pred_fps[i]))}]\n")
+            fout.write(f"ecfp6: [{';'.join(map(str, pred_fps[i]))}]\n")
             fout.write("\n")
 
 
