@@ -1,88 +1,13 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from tqdm.contrib.concurrent import process_map
 
-from ei2fp import BASE_DIR
-from ei2fp.functions import get_fp, get_maccs, get_train_test_datasets
-
-# fmt: off
-FPS_MASK = [1,    4,   13,   15,   33,   36,   64,   80,  114,  119,  128,
-            147,  175,  225,  250,  283,  293,  294,  301,  314,  322,  356,
-            361,  362,  378,  389,  420,  512,  540,  561,  579,  591,  636,
-            642,  650,  656,  659,  694,  695,  698,  710,  725,  726,  730,
-            739,  784,  794,  807,  831,  841,  849,  875,  881,  887,  893,
-            904,  923,  926,  935,  946, 1017, 1019]
-MACCS_MASK = [42,  57,  62,  65,  66,  72,  74,  75,  77,  78,  79,  80,  81,
-              83,  85,  86,  87,  88,  89,  90,  91,  92,  93,  94,  95,  96,
-              97,  98,  99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109,
-              110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122,
-              123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135,
-              136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148,
-              149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161,
-              162, 163, 164, 165]
-# fmt: on
-
-
-class Full(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-
-        self.fc_first = nn.Sequential(
-            nn.Linear(750, 4096),
-            nn.SiLU(),
-            nn.Linear(4096, 4096),
-            nn.SiLU(),
-            nn.Dropout(0.5),
-            nn.Linear(4096, 2048),
-            nn.SiLU(),
-            nn.Dropout(0.5),
-            nn.Linear(2048, 2048),
-            nn.SiLU(),
-            nn.BatchNorm1d(2048),
-        )
-
-        self.fc_maccs = nn.Sequential(
-            nn.Linear(2048, 167),
-            nn.Sigmoid(),
-        )
-        self.fc_fps = nn.Sequential(
-            nn.Linear(2048, 1024),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, x):
-        x = self.fc_first(x)
-        maccs = self.fc_maccs(x)
-        fps = self.fc_fps(x)
-        return (maccs, fps)
-
-
-class Full_Dataset(Dataset):
-
-    def __init__(self, smis, spectra):
-        spectra = np.vstack(spectra) / 1000
-        self.spectra = torch.FloatTensor(spectra)
-        self.maccs = torch.FloatTensor(
-            np.vstack(process_map(get_maccs, smis, max_workers=4, chunksize=1000))
-        )
-        self.fps = torch.clip(
-            torch.FloatTensor(
-                np.vstack(process_map(get_fp, smis, max_workers=4, chunksize=1000))
-            ),
-            0,
-            1,
-        )
-
-    def __getitem__(self, index):
-        return (self.maccs[index], self.fps[index], self.spectra[index])
-
-    def __len__(self):
-        return len(self.spectra)
+from ei2fp import BASE_DIR, FPS_MASK, MACCS_MASK
+from ei2fp.datasets import EI2FPDataset, get_train_val_test_datasets
+from ei2fp.models import EI2FPFull
 
 
 def train(device, model, optim, crit, epoch_end, train_dl, val_dl, name):
@@ -139,15 +64,15 @@ if __name__ == "__main__":
     else:
         device = torch.device("cpu")
 
-    model = Full().to(device)
+    model = EI2FPFull().to(device)
 
     optim = torch.optim.AdamW(model.parameters(), lr=lr)
     crit = nn.BCELoss()
 
     # The function get_train_test_dataset should be implemented by the user based on their dataset
     # The example uses a homemade input_lib database
-    trn_ds, val_ds, tst_ds = get_train_test_datasets(
-        BASE_DIR / "data/input/input_lib.ms", Full_Dataset
+    trn_ds, val_ds, tst_ds = get_train_val_test_datasets(
+        BASE_DIR / "data/input/input_lib.ms", EI2FPDataset
     )
     np.savetxt(
         BASE_DIR / "data/output/TST_maccs.txt", tst_ds.maccs.numpy()[:, MACCS_MASK]
