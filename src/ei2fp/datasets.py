@@ -5,7 +5,7 @@ from tqdm.auto import tqdm
 
 from math import ceil
 import re
-from rdkit import Chem
+from rdkit import Chem, rdBase
 
 from ei2fp.functions import get_fps, get_maccs
 from ei2fp import MAX_MZ
@@ -33,25 +33,30 @@ class EI2FPDataset(Dataset):
 
 
 def get_train_test_datasets(file_name, dataset, seed=42):
-    # compounds = []
-    names = []
-    smis = []
-    spectra = []
-    with open(file_name, "r") as f:  # "../data/input/input_lib.ms"
-        for line in tqdm(f):
-            name, smiles, spectrum, _ = line.split("|")
-            spectrum = list(map(float, spectrum.split()))
-            dense_spectrum = np.zeros(MAX_MZ)
-            spectrum = np.array(spectrum).reshape(-1, 2)
-            dense_spectrum[spectrum[:, 0].astype(int)] = spectrum[:, 1]
-            names.append(name.strip())
-            smis.append(smiles.strip())
-            spectra.append(dense_spectrum)
+    compounds = read_msp(file_name)
+    smis = [x.get("smiles", None) for x in compounds]
+    inchis = [x.get("inchi", None) for x in compounds]
+    spectra = [x.get("ms", None) for x in compounds]
+
+    num_smis = np.count_nonzero(smis)
+    num_inchis = np.count_nonzero(inchis)
+
+    print("Generating Molecules")
+    rdBase.DisableLog("rdApp.*")
+    if num_smis == 0 and num_inchis == 0:
+        raise ValueError("0 valid identifier strings found")
+    inchi_mols = list(map(Chem.MolFromInchi, tqdm(inchis)))
+    smiles_mols = list(map(Chem.MolFromSmiles, tqdm(smis)))
+    if np.count_nonzero(inchi_mols) >= np.count_nonzero(smiles_mols):
+        mols = inchi_mols
+    else:
+        mols = smiles_mols
+    rdBase.EnableLog("rdApp.*")
+    print(f"Valid molecules: {len(mols)}")
 
     smis = np.array(smis)
     spectra = np.vstack(spectra)
     print("Generating molecules")
-    mols = list(map(Chem.MolFromSmiles, tqdm(smis)))
     inchikeys = [
         Chem.MolToInchiKey(x).split("-")[0] if x is not None else None
         for x in tqdm(mols)
